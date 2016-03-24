@@ -1,0 +1,58 @@
+#######################################
+# Syntax colouring map for AD5934
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+AD5934					KEYWORD1
+AD						KEYWORD1	
+
+#######################################
+# Methods and functions (KEYWORD2)
+#######################################
+
+reSet					KEYWORD2
+standBy					KEYWORD2
+powerDown				KEYWORD2
+readData				KEYWORD2
+writeData				KEYWORD2
+initializeSweep			KEYWORD2
+startSweep				KEYWORD2
+repeatFrequency			KEYWORD2
+incrementFrequency		KEYWORD2
+setRange				KEYWORD2
+setPGA					KEYWORD2
+setExtClock				KEYWORD2
+setStartFrequency		KEYWORD2
+setFrequencyIncrement	KEYWORD2
+setNumberIncrements		KEYWORD2
+measureZ				KEYWORD2
+setSettlingCycles		KEYWORD2
+readDFTStatus			KEYWORD2
+readSweepStatus			KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+SlaveAddress			LITERAL1
+AddrPointer				LITERAL1
+CtrlReg1				LITERAL1
+CtrlReg2				LITERAL1
+StartFreq1				LITERAL1
+StartFreq2				LITERAL1
+StartFreq3				LITERAL1
+FreqIncrement1			LITERAL1
+FreqIncrement2			LITERAL1
+FreqIncrement3			LITERAL1
+NumberIncrements1		LITERAL1
+NumberIncrements2		LITERAL1
+NumberSettlingCycles1	LITERAL1
+NumberSettlingCycles2 	LITERAL1
+ReData1					LITERAL1
+ReData2 				LITERAL1
+ImData1 				LITERAL1
+ImData2 				LITERAL1
+StatusReg				LITERAL1
