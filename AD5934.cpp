@@ -205,11 +205,13 @@ int AD5934::setNumberIncrements(int nInc) {
 int AD5934::measureZ(int nRepeats){
 	int n = 0;
 	int i = 1;
+	const long t0 = millis(); 	//starting time reference
+	long t1 = 0;				//time of respective measurement
 	float f;
 	float magnitude;
 	float phase;
 	//Print header line
-	Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
+	Serial.println("Time\tFrequency\tMagnitude\tPhase\tResistance\tReactance");
 	//Check if frequency sweep is completed
 	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04){
 		//Pause between measurements
@@ -231,7 +233,12 @@ int AD5934::measureZ(int nRepeats){
 			magnitude = sqrt(pow(real,2) + pow(imag,2));
 			phase = atan(imag/real)*180/3.141592;
 			
+			//Get time elapsed since entering this routine
+			t1 = millis() - t0;
+			
 			//Print results
+			Serial.print(t1);
+			Serial.print("\t");
 			Serial.print(f);
 			Serial.print("\t");
 			Serial.print(magnitude,3);
@@ -287,12 +294,12 @@ int AD5934::measureZnew(int nRepeats){
 			//Read real register
 			byte Re1 = readData(ReData1);
 			byte Re2 = readData(ReData2);
-			interResult [0][n] = (Re1 << 8) | Re2; 	//Write real value to first column in array
+			interResult [0][i-1] = (Re1 << 8) | Re2; 	//Write real value to first column in array
 						
 			//Read imaginary register
 			byte Im1 = readData(ImData1);
 			byte Im2 = readData(ImData2);
-			interResult [1][n] = (Im1 << 8) | Im2;	//Write imaginary value to second column in array
+			interResult [1][i-1] = (Im1 << 8) | Im2;	//Write imaginary value to second column in array
 			
 			if (i < nRepeats){
 			repeatFrequency();
@@ -316,7 +323,7 @@ int AD5934::measureZnew(int nRepeats){
 			}
 			if (flag){
 			//Calculate average values for real and imaginary values
-			long sum[] = {0,0};	//Array of sums of intermediate results. Column 1 = real, column 2 = imaginary
+			long sum[2] = {};	//Array of sums of intermediate results. Column 1 = real, column 2 = imaginary
 			for (int m = 0; m < nRepeats; m++){
 				sum[0]+= interResult[0][m];
 				sum[1]+= interResult[1][m];
