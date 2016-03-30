@@ -34,17 +34,25 @@ void AD5934::standBy() {
 
 void AD5934::powerDown() {
   writeData(CtrlReg1, 0xA0);
+  #if debug
   Serial.println("Power down");
+  #endif
 }
 
 void AD5934::initializeSweep() {
   writeData(CtrlReg1, (readData(CtrlReg1) & 0x07) | 0x10);
-  Serial.println("Initialised with start frequency");
+  #if debug
+  Serial.print("Initialised with start frequency: ");
+  Serial.print(_StartFreq);
+  Serial.println(" Hz");
+  #endif
 }
 
 void AD5934::startSweep() {
   writeData(CtrlReg1, (readData(CtrlReg1) & 0x07 | 0x20));
+  #if debug
   Serial.println("Start frequency sweep");
+  #endif
 }
 
 void AD5934::repeatFrequency() {
@@ -61,6 +69,17 @@ void AD5934::incrementFrequency(){
   #endif
 }
 
+/*Reading and writing data
+The following functions read and write data from and to the AD5934.
+First, the basic functions:
+
+readData(int <address>)	reads the data stored in a register defined by the address. For a list of register addresses please refer to the datasheet and/or AD5934.harderr
+
+writeData(int address, int data) writes data to a register on AD5934. This function is essential for the following functions.
+
+
+
+*/
 
 int AD5934::readData(int address) {
   int data;
@@ -205,13 +224,11 @@ int AD5934::setNumberIncrements(int nInc) {
 int AD5934::measureZ(int nRepeats){
 	int n = 0;
 	int i = 1;
-	const long t0 = millis(); 	//starting time reference
-	long t1 = 0;				//time of respective measurement
 	float f;
 	float magnitude;
 	float phase;
 	//Print header line
-	Serial.println("Time\tFrequency\tMagnitude\tPhase\tResistance\tReactance");
+	//Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
 	//Check if frequency sweep is completed
 	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04){
 		//Pause between measurements
@@ -233,12 +250,7 @@ int AD5934::measureZ(int nRepeats){
 			magnitude = sqrt(pow(real,2) + pow(imag,2));
 			phase = atan(imag/real)*180/3.141592;
 			
-			//Get time elapsed since entering this routine
-			t1 = millis() - t0;
-			
 			//Print results
-			Serial.print(t1);
-			Serial.print("\t");
 			Serial.print(f);
 			Serial.print("\t");
 			Serial.print(magnitude,3);
@@ -272,23 +284,20 @@ int AD5934::measureZ(int nRepeats){
 			}
 		}
 	}
-	Serial.println("Done");
 }
 
 int AD5934::measureZnew(int nRepeats){
 	int n = 0;	//Counter for frequency calculations
 	int i = 1;	//Counter for repeats
-	const long t0 = millis(); 	//starting time reference
-	long t1 = 0;				//time of respective measurement
 	int interResult [2][nRepeats];	//Array with intermediate results for averaging
 	float f;
 	bool flag;
 	//Print header line
-	Serial.println("Time\tFrequency\tMagnitude\tPhase\tResistance\tReactance");
+	//Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
 	//Check if frequency sweep is completed
 	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04 || flag !=true){
 		//Pause between measurements
-		delay(100);
+		delay(20);
 		//If valid data are available, print them to serial out
 		if((readData(StatusReg) & 0x02) == 2){
 			//Read real register
@@ -334,19 +343,14 @@ int AD5934::measureZnew(int nRepeats){
 			//Calculate current frequency, impedance magnitude and phase
 			
 			float magnitude = sqrt(square(real) + square(imag));
-			float phase = atan(imag/real)*180/3.141592;
-			
-			//Get time elapsed since entering this routine
-			t1 = millis() - t0;
+			float phase = atan2(imag,real);
 			
 			//Print results
-			Serial.print(t1);
-			Serial.print("\t");
 			Serial.print(f);
 			Serial.print("\t");
 			Serial.print(magnitude,3);
 			Serial.print("\t");
-			Serial.print(phase,1);
+			Serial.print(phase,3);
 			Serial.print("\t");
 			Serial.print((int)real);
 			//Serial.print(Re1,HEX);
@@ -358,7 +362,6 @@ int AD5934::measureZnew(int nRepeats){
 			}
 		}
 	}
-	Serial.println("Done");
 }
 
 
