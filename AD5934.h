@@ -59,6 +59,7 @@ class AD5934{
 		int setNumberIncrements(int);
 
 		int measureZ(int);
+		int measureZnew(int);
 		int setSettlingCycles(int);
 		bool readDFTStatus();
 		bool readSweepStatus();

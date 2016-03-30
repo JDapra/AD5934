@@ -268,6 +268,92 @@ int AD5934::measureZ(int nRepeats){
 	Serial.println("Done");
 }
 
+int AD5934::measureZnew(int nRepeats){
+	int n = 0;	//Counter for frequency calculations
+	int i = 1;	//Counter for repeats
+	const long t0 = millis(); 	//starting time reference
+	long t1 = 0;				//time of respective measurement
+	int interResult [2][nRepeats];	//Array with intermediate results for averaging
+	float f;
+	bool flag;
+	//Print header line
+	Serial.println("Time\tFrequency\tMagnitude\tPhase\tResistance\tReactance");
+	//Check if frequency sweep is completed
+	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04 || flag !=true){
+		//Pause between measurements
+		delay(100);
+		//If valid data are available, print them to serial out
+		if((readData(StatusReg) & 0x02) == 2){
+			//Read real register
+			byte Re1 = readData(ReData1);
+			byte Re2 = readData(ReData2);
+			interResult [0][n] = (Re1 << 8) | Re2; 	//Write real value to first column in array
+						
+			//Read imaginary register
+			byte Im1 = readData(ImData1);
+			byte Im2 = readData(ImData2);
+			interResult [1][n] = (Im1 << 8) | Im2;	//Write imaginary value to second column in array
+			
+			if (i < nRepeats){
+			repeatFrequency();
+			i++;
+			flag = false;
+			}
+			else{
+				flag = true;
+				f = _StartFreq + n*_FreqIncrement;
+				//Next frequency
+				if((readData(StatusReg) & 0x07) < 4 ){
+					incrementFrequency();
+					n++;
+					if ( n == _NumberIncrements){
+						i = 0;
+					}
+					else {
+						i = 1;
+					}
+				}
+			}
+			if (flag){
+			//Calculate average values for real and imaginary values
+			long sum[] = {0,0};	//Array of sums of intermediate results. Column 1 = real, column 2 = imaginary
+			for (int m = 0; m < nRepeats; m++){
+				sum[0]+= interResult[0][m];
+				sum[1]+= interResult[1][m];
+			}
+			float real = sum[0]/nRepeats;
+			float imag = sum[1]/nRepeats;
+			
+			//Calculate current frequency, impedance magnitude and phase
+			
+			float magnitude = sqrt(square(real) + square(imag));
+			float phase = atan(imag/real)*180/3.141592;
+			
+			//Get time elapsed since entering this routine
+			t1 = millis() - t0;
+			
+			//Print results
+			Serial.print(t1);
+			Serial.print("\t");
+			Serial.print(f);
+			Serial.print("\t");
+			Serial.print(magnitude,3);
+			Serial.print("\t");
+			Serial.print(phase,1);
+			Serial.print("\t");
+			Serial.print((int)real);
+			//Serial.print(Re1,HEX);
+			//Serial.print(Re2,HEX);
+			Serial.print("\t");
+			Serial.println((int)imag);
+			//Serial.print(Im1,HEX);
+			//Serial.println(Im2,HEX);
+			}
+		}
+	}
+	Serial.println("Done");
+}
+
 
 int AD5934::setSettlingCycles(int nCyc){
   int lowerHex = nCyc % 256;
