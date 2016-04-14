@@ -37,7 +37,7 @@ const int StatusReg = 0x8F;
 
 class AD5934{
 	public:
-		AD5934(int, long);
+		AD5934(long);
 		int ClockPin;
 		int ExtClock;
 		int readData(int);
@@ -53,23 +53,22 @@ class AD5934{
 		
 		void setRange(int);
 		void setPGA(int);
+		void setStartFrequency(float);
+		void setFrequencyIncrement(float);
+		void setNumberIncrements(int);
+		void setSettlingCycles(int);
 		void setExtClock(bool);
-		int setStartFrequency(float);
-		int setFrequencyIncrement(float);
-		int setNumberIncrements(int);
 
 		int measureZ(int);
 		int measureZnew(int);
-		int setSettlingCycles(int);
 		bool readDFTStatus();
 		bool readSweepStatus();
 	private:
-		long _extClock;
-		long _opClock;
+		long _Clock;
 		float _StartFreq;
 		float _FreqIncrement;
 		int _NumberIncrements;
-		byte getFrequency(float, int);
+		byte _getFrequency(float, int);
 };
 		
 #endif

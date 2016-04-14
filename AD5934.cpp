@@ -1,14 +1,13 @@
 #include<AD5934.h>
 #include<Arduino.h>
 
-AD5934::AD5934(int ClockPin, long ExtClock) {
+AD5934::AD5934(long ExtClock) {
 	Wire.begin();
-	pinMode(ClockPin, OUTPUT);
-	_extClock = ExtClock;
-	//setExtClock(true);
-	//Timer1.initialize(1e6/_extClock);
-	//Timer1.pwm(ClockPin, 512);
+	_Clock = ExtClock;
+	//Set clock to external:
+	//writeData(CtrlReg2, 0x04);
 }
+
 /*Status functions
 The following set of functions define the status of the AD5934 and are typically set to the Control Registers 0x80 and 0x81. The following functions are available:
 reSet()				writes bit D4 and should place device in standby mode. (needs confirmation);
@@ -77,8 +76,25 @@ readData(int <address>)	reads the data stored in a register defined by the addre
 
 writeData(int address, int data) writes data to a register on AD5934. This function is essential for the following functions.
 
+setRange(int <range>) takes values from 1 - 4 representing the different output voltage ranges of AD5934. Each output range has a different output impedance. The table shows typical values (from datasheet).
 
+Range	Voltage (V, Vdd = 3.3V)	Output impedance (Ohm)
+-------------------------------------------------------
+1		1.98					 200
+2		0.97					2400
+3		0.198					 600
+4		0.383					1000
+-------------------------------------------------------
 
+setPGA(int <PGA>) takes values 1 or 5 for the programmable gain (PGA).
+
+setStartFrequency(float <frequency>) takes values for the start frequency up to 100000. The maximum frequency is also limited by the current clock frequency (faster clock = higher frequency). A warning will be printed to serial if the selected frequency is too high. For low frequencies it is advisable to reduce the clock speed (will also impact calculation speed!). Best test with an oscilloscope what clock speed gives best results for the selected frequency range.
+
+setFrequencyIncrement(float <frequency>) takes values for the frequency increment steps. The maximum resolution of the part is 0.1 Hz.
+
+setNumberIncrements(int <number of increments>) takes integer values up to 511 for the number of frequency steps defined with setFrequencyIncrement starting from the start frequency. Stepping up to the next increment needs to be called by the user.
+
+setSettlingCycles(int <number of settling cycles>) takes values up to 255. There is a possibility for multiplying the input by 2 or 4 by using the first register, but it's still buggy
 */
 
 int AD5934::readData(int address) {
@@ -99,7 +115,6 @@ int AD5934::readData(int address) {
   return data;
 }
 
-
 void AD5934::writeData(int address, int data) {
   Wire.beginTransmission(SlaveAddress);
   Wire.write(address);
@@ -107,7 +122,6 @@ void AD5934::writeData(int address, int data) {
   Wire.endTransmission();
   delay(1);
 } 
-
 
 void AD5934::setRange(int range) {
   //reset D10 and D9
@@ -159,29 +173,49 @@ void AD5934::setPGA(int PGA) {
   }
 }
 
+void AD5934::setStartFrequency(float freq) {
+	_StartFreq = freq;
+	writeData(StartFreq1, _getFrequency(freq, 1));
+	writeData(StartFreq2, _getFrequency(freq, 2));
+	writeData(StartFreq3, _getFrequency(freq, 3));
+}
+
+void AD5934::setFrequencyIncrement(float freq) {
+	_FreqIncrement = freq;
+	writeData(FreqIncrement1, _getFrequency(freq, 1));
+	writeData(FreqIncrement2, _getFrequency(freq, 2));
+	writeData(FreqIncrement3, _getFrequency(freq, 3));
+}
+
+void AD5934::setNumberIncrements(int nInc) {
+	_NumberIncrements = nInc;
+  writeData(NumberIncrements1, (nInc & 0x001F00) >> 0x08);
+  writeData(NumberIncrements2, (nInc & 0x0000FF));
+}
+
+void AD5934::setSettlingCycles(int nCyc){
+  int lowerHex = nCyc % 256;
+  int upperHex = ((nCyc - lowerHex)>> 8) % 2;
+  writeData(NumberSettlingCycles1, upperHex);
+  writeData(NumberSettlingCycles2, lowerHex);
+}
+
 void AD5934::setExtClock(bool clk) {
   byte cl;
   if (clk) {
     cl = 0x04; //Use external clock
-    _opClock = _extClock;
+    long _opClock = _Clock;
   }
   else {
     cl = 0x00; //Use internal clock
-    _opClock = 16776000;
+    long _opClock = 16776000;
   }
   //write to control register
   return writeData(CtrlReg2, cl);
 }
 
-int AD5934::setStartFrequency(float freq) {
-	_StartFreq = freq;
-	writeData(StartFreq1, getFrequency(freq, 1));
-	writeData(StartFreq2, getFrequency(freq, 2));
-	writeData(StartFreq3, getFrequency(freq, 3));
-}
-
-byte AD5934::getFrequency(float freq, int n) {
-  long val = long((freq / (_opClock / 16)) * pow(2, 27));
+byte AD5934::_getFrequency(float freq, int n) {
+  long val = long((freq / (_Clock / 16)) * pow(2, 27));
   byte code;
   if (val > 0xFFFFFF) {
     Serial.println("Frequency too high!");
@@ -208,18 +242,7 @@ byte AD5934::getFrequency(float freq, int n) {
   return code;
 }
 
-int AD5934::setFrequencyIncrement(float freq) {
-	_FreqIncrement = freq;
-	writeData(FreqIncrement1, getFrequency(freq, 1));
-	writeData(FreqIncrement2, getFrequency(freq, 2));
-	writeData(FreqIncrement3, getFrequency(freq, 3));
-}
 
-int AD5934::setNumberIncrements(int nInc) {
-	_NumberIncrements = nInc;
-  writeData(NumberIncrements1, (nInc & 0x001F00) >> 0x08);
-  writeData(NumberIncrements2, (nInc & 0x0000FF));
-}
 
 int AD5934::measureZ(int nRepeats){
 	int n = 0;
@@ -364,13 +387,6 @@ int AD5934::measureZnew(int nRepeats){
 	}
 }
 
-
-int AD5934::setSettlingCycles(int nCyc){
-  int lowerHex = nCyc % 256;
-  int upperHex = ((nCyc - lowerHex)>> 8) % 2;
-  writeData(NumberSettlingCycles1, upperHex);
-  writeData(NumberSettlingCycles2, lowerHex);
-}
 
 bool AD5934::readDFTStatus(){
   while ((readData(StatusReg) & 0x02) != 0x02){
