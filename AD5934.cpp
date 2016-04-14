@@ -1,14 +1,13 @@
 #include<AD5934.h>
 #include<Arduino.h>
 
-AD5934::AD5934(int ClockPin, long ExtClock) {
+AD5934::AD5934(long ExtClock) {
 	Wire.begin();
-	pinMode(ClockPin, OUTPUT);
-	_extClock = ExtClock;
-	//setExtClock(true);
-	//Timer1.initialize(1e6/_extClock);
-	//Timer1.pwm(ClockPin, 512);
+	_Clock = ExtClock;
+	//Set clock to external:
+	//writeData(CtrlReg2, 0x04);
 }
+
 /*Status functions
 The following set of functions define the status of the AD5934 and are typically set to the Control Registers 0x80 and 0x81. The following functions are available:
 reSet()				writes bit D4 and should place device in standby mode. (needs confirmation);
@@ -34,17 +33,25 @@ void AD5934::standBy() {
 
 void AD5934::powerDown() {
   writeData(CtrlReg1, 0xA0);
+  #if debug
   Serial.println("Power down");
+  #endif
 }
 
 void AD5934::initializeSweep() {
   writeData(CtrlReg1, (readData(CtrlReg1) & 0x07) | 0x10);
-  Serial.println("Initialised with start frequency");
+  #if debug
+  Serial.print("Initialised with start frequency: ");
+  Serial.print(_StartFreq);
+  Serial.println(" Hz");
+  #endif
 }
 
 void AD5934::startSweep() {
   writeData(CtrlReg1, (readData(CtrlReg1) & 0x07 | 0x20));
+  #if debug
   Serial.println("Start frequency sweep");
+  #endif
 }
 
 void AD5934::repeatFrequency() {
@@ -61,6 +68,34 @@ void AD5934::incrementFrequency(){
   #endif
 }
 
+/*Reading and writing data
+The following functions read and write data from and to the AD5934.
+First, the basic functions:
+
+readData(int <address>)	reads the data stored in a register defined by the address. For a list of register addresses please refer to the datasheet and/or AD5934.harderr
+
+writeData(int address, int data) writes data to a register on AD5934. This function is essential for the following functions.
+
+setRange(int <range>) takes values from 1 - 4 representing the different output voltage ranges of AD5934. Each output range has a different output impedance. The table shows typical values (from datasheet).
+
+Range	Voltage (V, Vdd = 3.3V)	Output impedance (Ohm)
+-------------------------------------------------------
+1		1.98					 200
+2		0.97					2400
+3		0.198					 600
+4		0.383					1000
+-------------------------------------------------------
+
+setPGA(int <PGA>) takes values 1 or 5 for the programmable gain (PGA).
+
+setStartFrequency(float <frequency>) takes values for the start frequency up to 100000. The maximum frequency is also limited by the current clock frequency (faster clock = higher frequency). A warning will be printed to serial if the selected frequency is too high. For low frequencies it is advisable to reduce the clock speed (will also impact calculation speed!). Best test with an oscilloscope what clock speed gives best results for the selected frequency range.
+
+setFrequencyIncrement(float <frequency>) takes values for the frequency increment steps. The maximum resolution of the part is 0.1 Hz.
+
+setNumberIncrements(int <number of increments>) takes integer values up to 511 for the number of frequency steps defined with setFrequencyIncrement starting from the start frequency. Stepping up to the next increment needs to be called by the user.
+
+setSettlingCycles(int <number of settling cycles>) takes values up to 255. There is a possibility for multiplying the input by 2 or 4 by using the first register, but it's still buggy
+*/
 
 int AD5934::readData(int address) {
   int data;
@@ -80,7 +115,6 @@ int AD5934::readData(int address) {
   return data;
 }
 
-
 void AD5934::writeData(int address, int data) {
   Wire.beginTransmission(SlaveAddress);
   Wire.write(address);
@@ -88,7 +122,6 @@ void AD5934::writeData(int address, int data) {
   Wire.endTransmission();
   delay(1);
 } 
-
 
 void AD5934::setRange(int range) {
   //reset D10 and D9
@@ -140,29 +173,49 @@ void AD5934::setPGA(int PGA) {
   }
 }
 
+void AD5934::setStartFrequency(float freq) {
+	_StartFreq = freq;
+	writeData(StartFreq1, _getFrequency(freq, 1));
+	writeData(StartFreq2, _getFrequency(freq, 2));
+	writeData(StartFreq3, _getFrequency(freq, 3));
+}
+
+void AD5934::setFrequencyIncrement(float freq) {
+	_FreqIncrement = freq;
+	writeData(FreqIncrement1, _getFrequency(freq, 1));
+	writeData(FreqIncrement2, _getFrequency(freq, 2));
+	writeData(FreqIncrement3, _getFrequency(freq, 3));
+}
+
+void AD5934::setNumberIncrements(int nInc) {
+	_NumberIncrements = nInc;
+  writeData(NumberIncrements1, (nInc & 0x001F00) >> 0x08);
+  writeData(NumberIncrements2, (nInc & 0x0000FF));
+}
+
+void AD5934::setSettlingCycles(int nCyc){
+  int lowerHex = nCyc % 256;
+  int upperHex = ((nCyc - lowerHex)>> 8) % 2;
+  writeData(NumberSettlingCycles1, upperHex);
+  writeData(NumberSettlingCycles2, lowerHex);
+}
+
 void AD5934::setExtClock(bool clk) {
   byte cl;
   if (clk) {
     cl = 0x04; //Use external clock
-    _opClock = _extClock;
+    long _opClock = _Clock;
   }
   else {
     cl = 0x00; //Use internal clock
-    _opClock = 16776000;
+    long _opClock = 16776000;
   }
   //write to control register
   return writeData(CtrlReg2, cl);
 }
 
-int AD5934::setStartFrequency(float freq) {
-	_StartFreq = freq;
-	writeData(StartFreq1, getFrequency(freq, 1));
-	writeData(StartFreq2, getFrequency(freq, 2));
-	writeData(StartFreq3, getFrequency(freq, 3));
-}
-
-byte AD5934::getFrequency(float freq, int n) {
-  long val = long((freq / (_opClock / 16)) * pow(2, 27));
+byte AD5934::_getFrequency(float freq, int n) {
+  long val = long((freq / (_Clock / 16)) * pow(2, 27));
   byte code;
   if (val > 0xFFFFFF) {
     Serial.println("Frequency too high!");
@@ -189,18 +242,7 @@ byte AD5934::getFrequency(float freq, int n) {
   return code;
 }
 
-int AD5934::setFrequencyIncrement(float freq) {
-	_FreqIncrement = freq;
-	writeData(FreqIncrement1, getFrequency(freq, 1));
-	writeData(FreqIncrement2, getFrequency(freq, 2));
-	writeData(FreqIncrement3, getFrequency(freq, 3));
-}
 
-int AD5934::setNumberIncrements(int nInc) {
-	_NumberIncrements = nInc;
-  writeData(NumberIncrements1, (nInc & 0x001F00) >> 0x08);
-  writeData(NumberIncrements2, (nInc & 0x0000FF));
-}
 
 int AD5934::measureZ(int nRepeats){
 	int n = 0;
@@ -209,7 +251,7 @@ int AD5934::measureZ(int nRepeats){
 	float magnitude;
 	float phase;
 	//Print header line
-	Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
+	//Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
 	//Check if frequency sweep is completed
 	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04){
 		//Pause between measurements
@@ -265,34 +307,31 @@ int AD5934::measureZ(int nRepeats){
 			}
 		}
 	}
-	Serial.println("Done");
 }
 
 int AD5934::measureZnew(int nRepeats){
 	int n = 0;	//Counter for frequency calculations
 	int i = 1;	//Counter for repeats
-	const long t0 = millis(); 	//starting time reference
-	long t1 = 0;				//time of respective measurement
 	int interResult [2][nRepeats];	//Array with intermediate results for averaging
 	float f;
 	bool flag;
 	//Print header line
-	Serial.println("Time\tFrequency\tMagnitude\tPhase\tResistance\tReactance");
+	//Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
 	//Check if frequency sweep is completed
 	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04 || flag !=true){
 		//Pause between measurements
-		delay(100);
+		delay(20);
 		//If valid data are available, print them to serial out
 		if((readData(StatusReg) & 0x02) == 2){
 			//Read real register
 			byte Re1 = readData(ReData1);
 			byte Re2 = readData(ReData2);
-			interResult [0][n] = (Re1 << 8) | Re2; 	//Write real value to first column in array
+			interResult [0][i-1] = (Re1 << 8) | Re2; 	//Write real value to first column in array
 						
 			//Read imaginary register
 			byte Im1 = readData(ImData1);
 			byte Im2 = readData(ImData2);
-			interResult [1][n] = (Im1 << 8) | Im2;	//Write imaginary value to second column in array
+			interResult [1][i-1] = (Im1 << 8) | Im2;	//Write imaginary value to second column in array
 			
 			if (i < nRepeats){
 			repeatFrequency();
@@ -316,7 +355,7 @@ int AD5934::measureZnew(int nRepeats){
 			}
 			if (flag){
 			//Calculate average values for real and imaginary values
-			long sum[] = {0,0};	//Array of sums of intermediate results. Column 1 = real, column 2 = imaginary
+			long sum[2] = {};	//Array of sums of intermediate results. Column 1 = real, column 2 = imaginary
 			for (int m = 0; m < nRepeats; m++){
 				sum[0]+= interResult[0][m];
 				sum[1]+= interResult[1][m];
@@ -327,19 +366,14 @@ int AD5934::measureZnew(int nRepeats){
 			//Calculate current frequency, impedance magnitude and phase
 			
 			float magnitude = sqrt(square(real) + square(imag));
-			float phase = atan(imag/real)*180/3.141592;
-			
-			//Get time elapsed since entering this routine
-			t1 = millis() - t0;
+			float phase = atan2(imag,real);
 			
 			//Print results
-			Serial.print(t1);
-			Serial.print("\t");
 			Serial.print(f);
 			Serial.print("\t");
 			Serial.print(magnitude,3);
 			Serial.print("\t");
-			Serial.print(phase,1);
+			Serial.print(phase,3);
 			Serial.print("\t");
 			Serial.print((int)real);
 			//Serial.print(Re1,HEX);
@@ -351,16 +385,8 @@ int AD5934::measureZnew(int nRepeats){
 			}
 		}
 	}
-	Serial.println("Done");
 }
 
-
-int AD5934::setSettlingCycles(int nCyc){
-  int lowerHex = nCyc % 256;
-  int upperHex = ((nCyc - lowerHex)>> 8) % 2;
-  writeData(NumberSettlingCycles1, upperHex);
-  writeData(NumberSettlingCycles2, lowerHex);
-}
 
 bool AD5934::readDFTStatus(){
   while ((readData(StatusReg) & 0x02) != 0x02){
