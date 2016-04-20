@@ -366,7 +366,7 @@ int AD5934::measureZnew(int nRepeats){
 			//Calculate current frequency, impedance magnitude and phase
 			
 			float magnitude = sqrt(square(real) + square(imag));
-			float phase = atan2(imag,real);
+			float phase = atan2(imag,real)*180/3.141592;
 			
 			//Print results
 			Serial.print(f);
