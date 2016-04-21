@@ -1,11 +1,9 @@
 #include<AD5934.h>
 #include<Arduino.h>
 
-AD5934::AD5934(long ExtClock) {
+AD5934::AD5934() {
 	Wire.begin();
-	_Clock = ExtClock;
-	//Set clock to external:
-	//writeData(CtrlReg2, 0x04);
+	//_Clock = ExtClock;
 }
 
 /*Status functions
@@ -151,6 +149,10 @@ void AD5934::setRange(int range) {
     default:
       break;
   }
+  #if debug
+  Serial.print("Range set to: ");
+  Serial.println(range);
+  #endif
 }
 
 void AD5934::setPGA(int PGA) {
@@ -171,6 +173,10 @@ void AD5934::setPGA(int PGA) {
     default:
       break;
   }
+  #if debug
+  Serial.print("PGA set to: ");
+  Serial.println(PGA);
+  #endif
 }
 
 void AD5934::setStartFrequency(float freq) {
@@ -178,6 +184,12 @@ void AD5934::setStartFrequency(float freq) {
 	writeData(StartFreq1, _getFrequency(freq, 1));
 	writeData(StartFreq2, _getFrequency(freq, 2));
 	writeData(StartFreq3, _getFrequency(freq, 3));
+	#if debug
+	Serial.print("Start frequency: ");
+	Serial.print(_getFrequency(freq,1),HEX);
+	Serial.print(_getFrequency(freq,2),HEX);
+	Serial.println(_getFrequency(freq,3),HEX);
+	#endif
 }
 
 void AD5934::setFrequencyIncrement(float freq) {
@@ -185,6 +197,12 @@ void AD5934::setFrequencyIncrement(float freq) {
 	writeData(FreqIncrement1, _getFrequency(freq, 1));
 	writeData(FreqIncrement2, _getFrequency(freq, 2));
 	writeData(FreqIncrement3, _getFrequency(freq, 3));
+	#if debug
+	Serial.print("Frequency increment: ");
+	Serial.print(_getFrequency(freq,1),HEX);
+	Serial.print(_getFrequency(freq,2),HEX);
+	Serial.println(_getFrequency(freq,3),HEX);
+	#endif
 }
 
 void AD5934::setNumberIncrements(int nInc) {
@@ -200,22 +218,57 @@ void AD5934::setSettlingCycles(int nCyc){
   writeData(NumberSettlingCycles2, lowerHex);
 }
 
-void AD5934::setExtClock(bool clk) {
-  byte cl;
-  if (clk) {
-    cl = 0x04; //Use external clock
-    long _opClock = _Clock;
-  }
-  else {
-    cl = 0x00; //Use internal clock
-    long _opClock = 16776000;
-  }
-  //write to control register
-  return writeData(CtrlReg2, cl);
+void AD5934::setExtClock(int ClockRegisterValue, int Prescaler) {
+	long clk = 16e6/((ClockRegisterValue+1)*Prescaler*2);
+	byte cl;
+	if (clk == 0) {
+		cl = 0x00; //Use internal clock, AD5933 only!
+		_Clock = 16776000;
+		Serial.print("Internal clock set to: ");
+		Serial.println(_Clock);
+	}
+	else {
+		cl = 0x04; //Use external clock
+		_Clock = clk;
+		if (Prescaler != 1 && Prescaler != 8 && Prescaler != 64 && Prescaler != 256 && Prescaler != 1024){
+		Serial.println("Invalid Parameter for prescaler! Must be 1, 8, 64, 256, or 1024.");
+		}
+		else{
+			TCCR1A = bit (COM1A0);  // toggle OC1A on Compare Match
+			switch(Prescaler){
+				case 1:
+				TCCR1B = bit (WGM12) | bit (CS10);   // CTC, no prescaling
+				break;
+				
+				case 8:
+				TCCR1B = bit (WGM12) | bit (CS11);   // CTC, /8
+				break;
+		  
+				case 64:
+				TCCR1B = bit (WGM12) | bit (CS10) | bit (CS11);   // CTC, /64
+				break;
+		  
+				case 256:
+				TCCR1B = bit (WGM12) | bit (CS12);   // CTC, /256
+				break;
+		  
+				case 1024:
+				TCCR1B = bit (WGM12) | bit (CS10) | bit (CS12);   // CTC, /1024
+				break;
+			}
+		OCR1A =  ClockRegisterValue;
+		}
+		Serial.print("External clock set to: ");
+		Serial.println(_Clock);
+	}
+	//write to control register
+	return writeData(CtrlReg2, cl);
 }
 
 byte AD5934::_getFrequency(float freq, int n) {
+
   long val = long((freq / (_Clock / 16)) * pow(2, 27));
+
   byte code;
   if (val > 0xFFFFFF) {
     Serial.println("Frequency too high!");
@@ -243,73 +296,7 @@ byte AD5934::_getFrequency(float freq, int n) {
 }
 
 
-
 int AD5934::measureZ(int nRepeats){
-	int n = 0;
-	int i = 1;
-	float f;
-	float magnitude;
-	float phase;
-	//Print header line
-	//Serial.println("Frequency\tMagnitude\tPhase\tResistance\tReactance");
-	//Check if frequency sweep is completed
-	while (i < nRepeats || (readData(StatusReg) & 0x04) !=0x04){
-		//Pause between measurements
-		delay(100);
-		//If valid data are available, print them to serial out
-		if((readData(StatusReg) & 0x02) == 2){
-			//Read real register
-			byte Re1 = readData(ReData1);
-			byte Re2	= readData(ReData2);
-			float real = (Re1 << 8) | Re2;
-						
-			//Read imaginary register
-			byte Im1 = readData(ImData1);
-			byte Im2 = readData(ImData2);
-			float imag = (Im1 << 8) | Im2;
-			
-			//Calculate current frequency, impedance magnitude and phase
-			f = _StartFreq + n*_FreqIncrement;
-			magnitude = sqrt(pow(real,2) + pow(imag,2));
-			phase = atan(imag/real)*180/3.141592;
-			
-			//Print results
-			Serial.print(f);
-			Serial.print("\t");
-			Serial.print(magnitude,3);
-			Serial.print("\t");
-			Serial.print(phase,1);
-			Serial.print("\t");
-			Serial.print((int)real);
-			//Serial.print(Re1,HEX);
-			//Serial.print(Re2,HEX);
-			Serial.print("\t");
-			Serial.println((int)imag);
-			//Serial.print(Im1,HEX);
-			//Serial.println(Im2,HEX);
-			
-			if (i < nRepeats){
-			repeatFrequency();
-			i++;
-			}
-			else{
-				//Next frequency
-				if((readData(StatusReg) & 0x07) < 4 ){
-					incrementFrequency();
-					n++;
-					if ( n == _NumberIncrements){
-						i = 0;
-					}
-					else {
-						i = 1;
-					}
-				}
-			}
-		}
-	}
-}
-
-int AD5934::measureZnew(int nRepeats){
 	int n = 0;	//Counter for frequency calculations
 	int i = 1;	//Counter for repeats
 	int interResult [2][nRepeats];	//Array with intermediate results for averaging
